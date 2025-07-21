@@ -1,83 +1,687 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Geoportal - Bienvenida</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+<!DOCTYPE html>  
+<html lang="es">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>GeoVisor - Alex Ordóñez</title>  
+    <script src="https://cdn.tailwindcss.com"></script>  
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />  
+    <style>  
+        .loading-spinner {border:2px solid #f3f4f6;border-top:2px solid #3b82f6;border-radius:50%;width:16px;height:16px;animation:spin 1s linear infinite}  
+        @keyframes spin {0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}  
+        .toast {position:fixed;top:20px;right:20px;z-index:1000;padding:12px 20px;border-radius:8px;color:#fff;font-weight:500;opacity:0;transform:translateX(100%);transition:all .3s ease}  
+        .toast.show {opacity:1;transform:translateX(0)}  
+        .toast.success {background-color:#10b981}  
+        .toast.error {background-color:#ef4444}  
+        .toast.warning {background-color:#f59e0b}  
+        .toast.info {background-color:#3b82f6}  
+        .layer-card {transition:all .2s ease;border:2px solid transparent}  
+        .layer-card:hover {border-color:#e5e7eb;transform:translateY(-1px)}  
+        .layer-card.loading {background-color:#f9fafb;border-color:#3b82f6}  
+        .layer-card.active {background-color:#eff6ff;border-color:#3b82f6}  
+        .attributes-config {background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border:1px solid #cbd5e1;border-radius:8px;padding:12px;margin-top:10px;max-height:0;overflow:hidden;opacity:0;transition:all .3s ease;transform:translateY(-10px)}  
+        .attributes-config.show {max-height:300px;opacity:1;transform:translateY(0)}  
+        .attribute-item {display:flex;align-items:center;padding:6px 8px;margin:2px 0;border-radius:4px;transition:background-color .2s ease;cursor:pointer}  
+        .attribute-item:hover {background-color:rgba(59,130,246,0.1)}  
+        .attribute-checkbox {margin-right:10px;width:16px;height:16px;accent-color:#3b82f6}  
+        .attribute-label {font-size:12px;color:#374151;font-weight:500;cursor:pointer;flex:1}  
+        .config-button {background:transparent;border:none;cursor:pointer;padding:6px;border-radius:4px;transition:all .2s ease;font-size:16px}  
+        .config-button:hover {background-color:#f3f4f6;transform:scale(1.1)}  
+        .config-button.active {background-color:#ddd6fe;color:#7c3aed}  
+        .sidebar-toggle {position:fixed;top:16px;left:16px;z-index:1000;background:#fff;border:none;border-radius:8px;padding:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);display:none}  
+        @media (max-width:768px) {.sidebar-toggle{display:block}.sidebar{position:fixed;left:-100%;top:0;height:100vh;z-index:999;transition:left .3s ease}.sidebar.open{left:0}}  
+        .close-panel-btn {background:#e5e7eb;color:#4b5563;border:none;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;transition:all .2s ease;margin-left:auto;display:flex;align-items:center}  
+        .close-panel-btn:hover {background:#d1d5db;color:#1f2937}  
+        #survey-btn{position:fixed;bottom:20px;right:20px;z-index:9999;background:#3b82f6;color:#fff;padding:10px 16px;border-radius:50px;font-weight:500;border:none;box-shadow:0 2px 5px rgba(0,0,0,.2);cursor:pointer}  
+        #survey-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:10000;align-items:center;justify-content:center}  
+        .modal-box{background:#fff;padding:20px;border-radius:8px;width:90%;max-width:450px}  
+    </style>  
+</head>  
+<body class="h-screen flex overflow-hidden bg-gray-100">  
+    <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>  
+    <aside id="sidebar" class="sidebar w-80 bg-white shadow-lg p-6 flex flex-col space-y-4">  
+        <div class="flex items-center justify-between">  
+            <h1 class="text-2xl font-extrabold text-gray-900">GeoVisor</h1>  
+            <div class="text-right">  
+                <span class="text-sm text-gray-500">Alex Ordóñez</span>  
+                <div class="text-xs text-green-600 font-medium">UTPL</div>  
+            </div>  
+        </div>  
+        <div id="status" class="text-sm font-medium text-gray-600 p-2 bg-gray-50 rounded-lg">  
+            Inicializando explorador...  
+        </div>  
+        <div class="flex-1 overflow-y-auto">  
+            <div class="flex items-center justify-between mb-3">  
+                <h2 class="uppercase text-xs text-gray-500">Capas disponibles</h2>  
+                <button onclick="clearAllLayers()" class="text-xs text-red-600 hover:text-red-800">  
+                    Limpiar todo  
+                </button>  
+            </div>  
+            <div id="layers" class="space-y-2"></div>  
+        </div>  
+        <div class="border-t pt-4">  
+            <div class="text-xs text-gray-500 mb-2">Estadísticas</div>  
+            <div class="flex justify-between text-sm">  
+                <span>Capas cargadas:</span>  
+                <span id="layerCount" class="font-medium">0</span>  
+            </div>  
+            <div class="flex justify-between text-sm">  
+                <span>Total features:</span>  
+                <span id="featureCount" class="font-medium">0</span>  
+            </div>  
+        </div>  
+    </aside>  
+    <div id="map" class="flex-1"></div>  
+        <button id="survey-btn">📋 Encuesta</button>  
+        <div id="survey-modal">  
+            <div class="modal-box">  
+                <h3 class="text-lg font-semibold mb-4">Encuesta de Satisfacción</h3>  
+                <select id="satisfaction" class="w-full p-2 border rounded mb-4">  
+                    <option value="" disabled selected>¿Le ha sido útil este visor?</option>  
+                    <option value="5">Excelente - Muy útil</option>  
+                    <option value="4">Bueno - Útil</option>  
+                    <option value="3">Regular - Medianamente útil</option>  
+                    <option value="2">Malo - Poco útil</option>  
+                    <option value="1">Muy malo - Nada útil</option>  
+                </select>  
+                <textarea id="comment" placeholder="Comentario (opcional)" class="w-full p-2 border rounded mb-4" rows="3"></textarea>  
+                <div id="location-status" class="p-2 bg-yellow-50 text-yellow-700 rounded mb-4 text-sm">Obteniendo ubicación...</div>  
+                <div class="flex justify-end gap-2">  
+                    <button id="cancel-btn" class="px-4 py-2 bg-gray-200 rounded">Cancelar</button>  
+                    <button id="submit-btn" class="px-4 py-2 bg-blue-500 text-white rounded" disabled>Enviar</button>  
+                </div>  
+            </div>  
+        </div>  
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>  
+    <script type="module">  
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';  
+        
+        // Configuración  
+        const CONFIG = {  
+            supabase: {  
+                url: 'https://xuwrfaoroittriticbpc.supabase.co',  
+                key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1d3JmYW9yb2l0dHJpdGljYnBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAyOTMxMTMsImV4cCI6MjA2NTg2OTExM30.JkrHztgVNpUcq2wJ3Rlfy_SsBIFhkVnP-x6LkZPWUnU'  
+            },  
+            map: { center: [-2.9, -78.6], zoom: 10, padding: [20, 20] },  
+            layers: {  
+                'cantones_azuay_4326': { label: 'Cantones', color: '#6b7280', icon: '🏛️' },  
+                'hidro_n6_4326': { label: 'Microcuencas', color: '#10b981', icon: '💧' },  
+                'parroquias_azuay_4326': { label: 'Parroquias', color: '#8b5cf6', icon: '🏘️' },  
+                'poblados_azuay_4326': { label: 'Poblados', color: '#f97316', icon: '🏠' },  
+                'rios_azuay_4326': { label: 'Ríos', color: '#3b82f6', icon: '🌊' },  
+                'encuesta': { label: 'Encuestas', color: '#ec4899', icon: '📋' }  
+            }  
+        };  
+
+        // Variables globales  
+        let map, layerGroup;  
+        const layersMap = {}, layersCache = new Map(), layerAttributes = {}, selectedAttributes = {};  
+        let featureCount = 0;  
+        const supabase = createClient(CONFIG.supabase.url, CONFIG.supabase.key);  
+
+        // Funciones auxiliares  
+        function showToast(msg, type = 'info') {  
+            const toast = document.createElement('div');  
+            toast.className = `toast ${type}`;  
+            toast.textContent = msg;  
+            document.body.appendChild(toast);  
+            setTimeout(() => toast.classList.add('show'), 100);  
+            setTimeout(() => {  
+                toast.classList.remove('show');  
+                setTimeout(() => toast.remove(), 300);  
+            }, 3000);  
+        }  
+
+        function updateStatus(msg, type = 'info') {  
+            const el = document.getElementById('status');  
+            el.textContent = msg;  
+            el.className = `text-sm font-medium p-2 rounded-lg ${  
+                type === 'error' ? 'text-red-600 bg-red-50' :  
+                type === 'warning' ? 'text-yellow-600 bg-yellow-50' :  
+                type === 'success' ? 'text-green-600 bg-green-50' :  
+                'text-gray-600 bg-gray-50'  
+            }`;  
+        }  
+
+        function updateStats() {  
+            document.getElementById('layerCount').textContent = Object.keys(layersMap).length;  
+            document.getElementById('featureCount').textContent = featureCount;  
+        }  
+
+        function createFeatureFromRow(row) {  
+            let geom = typeof row.geom === 'string' ? JSON.parse(row.geom) : row.geom;  
+            if (!geom || !geom.type || !geom.coordinates) throw new Error('Geometría inválida');  
+            const props = {...row};  
+            delete props.geom;  
+            return { type: 'Feature', geometry: geom, properties: props };  
+        }  
+
+        function createPopupContent(props, layerName) {  
+            const attrs = selectedAttributes[layerName] || Object.keys(props).slice(0, 5);  
+            return `<div class="p-2"><table class="text-sm w-full">${  
+                attrs.filter(attr => props.hasOwnProperty(attr))  
+                    .map(attr => `<tr><th class="pr-2 font-semibold text-gray-700">${attr}</th>  
+                                <td class="text-gray-600">${props[attr] || 'N/A'}</td></tr>`)  
+                    .join('')  
+            }</table></div>`;  
+        }  
+
+        function setLayerLoadingState(name, isLoading) {  
+            const card = document.getElementById(`card-${name}`);  
+            const checkbox = document.getElementById(`cb-${name}`);  
+            const spinner = card.querySelector('.loading-spinner');  
+            
+            if (isLoading) {  
+                card.classList.add('loading');  
+                checkbox.disabled = true;  
+                if (!spinner) {  
+                    const loadSpinner = document.createElement('div');  
+                    loadSpinner.className = 'loading-spinner';  
+                    card.appendChild(loadSpinner);  
+                }  
+            } else {  
+                card.classList.remove('loading');  
+                checkbox.disabled = false;  
+                if (spinner) spinner.remove();  
+            }  
+        }  
+
+        function toggleAttributeConfig(name) {  
+            const config = document.getElementById(`attrs-${name}`);  
+            const btn = document.getElementById(`config-btn-${name}`);  
+            if (!config) return;  
+            
+            // Cerrar otros paneles  
+            document.querySelectorAll('.attributes-config').forEach(p => {  
+                if (p.id !== `attrs-${name}`) p.classList.remove('show');  
+            });  
+            
+            document.querySelectorAll('.config-button').forEach(b => {  
+                if (b.id !== `config-btn-${name}`) b.classList.remove('active');  
+            });  
+            
+            // Toggle panel actual  
+            const isVisible = config.classList.contains('show');  
+            if (isVisible) {  
+                config.classList.remove('show');  
+                btn.classList.remove('active');  
+            } else {  
+                config.classList.add('show');  
+                btn.classList.add('active');  
+                showToast(`Configurando ${CONFIG.layers[name].label}`, 'success');  
+            }  
+        }  
+
+        function createAttributesConfig(name, attrs) {  
+            if (!selectedAttributes[name]) {  
+                selectedAttributes[name] = attrs.slice(0, 5);  
+            }
+            
+            const config = document.createElement('div');
+            config.id = `attrs-${name}`;
+            config.className = 'attributes-config';
+            
+            config.innerHTML = `
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold text-gray-700">Atributos</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="toggleAllAttributes('${name}')" 
+                                class="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">
+                            Todo/Nada
+                        </button>
+                        <button onclick="closeAttributePanel('${name}')"
+                                class="close-panel-btn">↑</button>
+                    </div>
+                </div>
+                
+                <div class="attributes-list max-h-40 overflow-y-auto" id="attrs-list-${name}">
+                    ${attrs.map(attr => `
+                        <div class="attribute-item" data-name="${attr.toLowerCase()}">
+                            <input type="checkbox" id="attr-${name}-${attr}" 
+                                   class="attribute-checkbox"
+                                   ${selectedAttributes[name].includes(attr) ? 'checked' : ''}
+                                   onchange="handleAttributeChange('${name}', '${attr}', this.checked)">
+                            <label for="attr-${name}-${attr}" class="attribute-label">${attr}</label>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="mt-3 pt-2 border-t border-gray-300">
+                    <div class="flex justify-between text-xs text-gray-600">
+                        <span>Seleccionados:</span>
+                        <span id="selected-count-${name}" class="font-bold text-blue-600">
+                            ${selectedAttributes[name].length}/${attrs.length}
+                        </span>
+                    </div>
+                </div>
+            `;
+            
+            return config;
         }
-        
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            text-align: center;
-            max-width: 500px;
-            margin: 20px;
+
+        function handleAttributeChange(name, attr, checked) {
+            if (checked) {
+                if (!selectedAttributes[name].includes(attr)) {
+                    selectedAttributes[name].push(attr);
+                }
+            } else {
+                selectedAttributes[name] = selectedAttributes[name].filter(a => a !== attr);
+            }
+            
+            // Actualizar contador
+            const counter = document.getElementById(`selected-count-${name}`);
+            counter.textContent = `${selectedAttributes[name].length}/${layerAttributes[name].length}`;
+            
+            // Actualizar tooltips
+            if (layersMap[name]) updateLayerTooltips(name);
+            
+            showToast(`${attr} ${checked ? 'activado' : 'desactivado'}`, 'info');
         }
-        
-        h1 {
-            color: #333;
-            font-size: 2.5em;
-            margin-bottom: 20px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+
+        function toggleAllAttributes(name) {
+            const attrs = layerAttributes[name];
+            const allSelected = selectedAttributes[name].length === attrs.length;
+            
+            selectedAttributes[name] = allSelected ? [] : [...attrs];
+            
+            // Actualizar checkboxes
+            attrs.forEach(attr => {
+                const cb = document.getElementById(`attr-${name}-${attr}`);
+                if (cb) cb.checked = !allSelected;
+            });
+            
+            // Actualizar contador y tooltips
+            const counter = document.getElementById(`selected-count-${name}`);
+            counter.textContent = `${selectedAttributes[name].length}/${attrs.length}`;
+            
+            if (layersMap[name]) updateLayerTooltips(name);
+            
+            showToast(`${allSelected ? 'Deseleccionados' : 'Seleccionados'} todos`, 'success');
         }
-        
-        .subtitle {
-            color: #666;
-            font-size: 1.2em;
-            margin-bottom: 30px;
-            line-height: 1.6;
+
+        function updateLayerTooltips(name) {
+            const layer = layersMap[name];
+            if (!layer) return;
+            
+            layer.eachLayer(sublayer => {
+                if (sublayer.feature?.properties) {
+                    sublayer.unbindTooltip();
+                    sublayer.bindTooltip(createPopupContent(sublayer.feature.properties, name), {
+                        direction: 'auto',
+                        permanent: false,
+                        sticky: true
+                    });
+                }
+            });
         }
-        
-        .map-icon {
-            font-size: 4em;
-            color: #667eea;
-            margin-bottom: 20px;
+
+        // Clase principal
+        class GeoVisorApp {
+            constructor() {
+                this.init();
+            }
+
+            async init() {
+                try {
+                    this.initMap();
+                    this.renderLayerCards();
+                    updateStatus('Seleccione una o más capas para visualizar', 'info');
+                    showToast('GeoVisor iniciado correctamente', 'success');
+                } catch (err) {
+                    console.error('Error al inicializar:', err);
+                    updateStatus('Error al inicializar', 'error');
+                    showToast('Error al inicializar', 'error');
+                }
+            }
+
+            initMap() {
+                map = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
+                layerGroup = L.layerGroup().addTo(map);
+            }
+
+            renderLayerCards() {
+                const container = document.getElementById('layers');
+                container.innerHTML = '';
+                Object.entries(CONFIG.layers).forEach(([name, info]) => {
+                    container.appendChild(this.createLayerCard(name, info));
+                });
+            }
+
+            createLayerCard(name, info) {
+                const card = document.createElement('div');
+                card.id = `card-${name}`;
+                card.className = 'layer-card p-3 bg-white rounded-lg shadow-sm';
+                
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" id="cb-${name}" value="${name}" 
+                                class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                            <span class="text-lg">${info.icon}</span>
+                            <div class="w-3 h-3 rounded-full" style="background-color:${info.color}"></div>
+                            <label for="cb-${name}" class="cursor-pointer text-gray-800 font-medium">${info.label}</label>
+                        </div>
+                        <div class="flex space-x-1">
+                            <button id="config-btn-${name}" class="config-button text-gray-400 hover:text-purple-500" 
+                                title="Atributos" onclick="toggleAttributeConfig('${name}')">📋</button>
+                            <button onclick="app.zoomToLayer('${name}')" 
+                                class="p-1 text-gray-400 hover:text-blue-500 transition-colors" 
+                                title="Zoom a capa">🔍</button>
+                            <button onclick="app.showLayerInfo('${name}')" 
+                                class="p-1 text-gray-400 hover:text-green-500 transition-colors" 
+                                title="Información">ℹ️</button>
+                        </div>
+                    </div>
+                `;
+
+                card.querySelector(`#cb-${name}`).addEventListener('change', async (e) => {
+                    if (e.target.checked) await this.loadLayer(name);
+                    else this.removeLayer(name);
+                });
+
+                return card;
+            }
+
+            async loadLayer(name) {
+                try {
+                    setLayerLoadingState(name, true);
+                    updateStatus(`Cargando ${CONFIG.layers[name].label}...`, 'info');
+
+                    // Verificar caché
+                    if (layersCache.has(name)) {
+                        const cached = layersCache.get(name);
+                        layerGroup.addLayer(cached);
+                        layersMap[name] = cached;
+                        setLayerLoadingState(name, false);
+                        updateStatus(`${CONFIG.layers[name].label} cargada desde caché`, 'success');
+                        this.updateLayerActiveState(name, true);
+                        return;
+                    }
+
+                    // Obtener datos
+                    const { data: rows, error } = await supabase.from(name).select('*').limit(1000);
+
+                    if (error) throw new Error(`Error de base de datos: ${error.message}`);
+                    if (!rows?.length) {
+                        updateStatus(`⚠️ ${CONFIG.layers[name].label} sin registros`, 'warning');
+                        showToast(`No hay datos para ${CONFIG.layers[name].label}`, 'warning');
+                        this.uncheckLayer(name);
+                        return;
+                    }
+
+                    // Obtener atributos
+                    const attrs = Object.keys(rows[0]).filter(k => k !== 'geom');
+                    layerAttributes[name] = attrs;
+
+                    // Crear panel de atributos
+                    if (!document.getElementById(`attrs-${name}`)) {
+                        document.getElementById(`card-${name}`).appendChild(
+                            createAttributesConfig(name, attrs)
+                        );
+                    }
+
+                    // Crear capa
+                    const features = rows.map(row => createFeatureFromRow(row));
+                    
+                    const geoLayer = L.geoJSON(
+                        { type: 'FeatureCollection', features },
+                        {
+                            style: {
+                                color: CONFIG.layers[name].color,
+                                weight: 2,
+                                opacity: 0.8,
+                                fillOpacity: 0.1
+                            },
+                            pointToLayer: (feature, latlng) => {
+                                if (name === 'poblados_azuay_4326') {
+                                    return L.circleMarker(latlng, {
+                                        radius: 4,
+                                        fillColor: CONFIG.layers[name].color,
+                                        color: '#fff',
+                                        weight: 1,
+                                        fillOpacity: 0.7,
+                                        interactive: true
+                                    });
+                                }
+                                return L.marker(latlng);
+                            },
+                            onEachFeature: (feature, layer) => {
+                                layer.bindTooltip(createPopupContent(feature.properties, name), {
+                                    direction: 'auto',
+                                    permanent: false,
+                                    sticky: true
+                                });
+                            }
+                        }
+                    ).addTo(layerGroup);
+
+                    // Actualizar estado
+                    layersMap[name] = geoLayer;
+                    layersCache.set(name, geoLayer);
+                    featureCount += features.length;
+                    
+                    this.updateBounds();
+                    updateStatus(`${CONFIG.layers[name].label} cargada (${features.length} elementos)`, 'success');
+                    showToast(`${CONFIG.layers[name].label} cargada`, 'success');
+                    this.updateLayerActiveState(name, true);
+                    updateStats();
+
+                } catch (err) {
+                    console.error('Error al cargar capa:', err);
+                    updateStatus(`❌ Error al cargar ${CONFIG.layers[name].label}`, 'error');
+                    showToast(`Error: ${CONFIG.layers[name].label}`, 'error');
+                    this.uncheckLayer(name);
+                } finally {
+                    setLayerLoadingState(name, false);
+                }
+            }
+
+            removeLayer(name) {
+                if (layersMap[name]) {
+                    const layer = layersMap[name];
+                    layerGroup.removeLayer(layer);
+                    
+                    let count = 0;
+                    layer.eachLayer(() => count++);
+                    featureCount -= count;
+                    
+                    delete layersMap[name];
+                    this.updateBounds();
+                    updateStatus(`${CONFIG.layers[name].label} eliminada`, 'info');
+                    this.updateLayerActiveState(name, false);
+                    updateStats();
+                }
+            }
+
+            updateLayerActiveState(name, isActive) {
+                document.getElementById(`card-${name}`).classList.toggle('active', isActive);
+            }
+
+            uncheckLayer(name) {
+                const cb = document.getElementById(`cb-${name}`);
+                if (cb) cb.checked = false;
+            }
+
+            updateBounds() {
+                const layers = Object.values(layersMap);
+                if (layers.length > 0) {
+                    map.fitBounds(new L.featureGroup(layers).getBounds(), {padding: CONFIG.map.padding});
+                } else {
+                    map.setView(CONFIG.map.center, CONFIG.map.zoom);
+                }
+            }
+
+            zoomToLayer(name) {
+                if (layersMap[name]) {
+                    map.fitBounds(layersMap[name].getBounds(), {padding: CONFIG.map.padding});
+                    showToast(`Zoom a ${CONFIG.layers[name].label}`, 'info');
+                } else {
+                    showToast(`${CONFIG.layers[name].label} no está cargada`, 'warning');
+                }
+            }
+
+            showLayerInfo(name) {
+                const info = CONFIG.layers[name];
+                const count = layersMap[name] ? Object.keys(layersMap[name]._layers).length : 0;
+                const attrCount = layerAttributes[name]?.length || 0;
+                const selectedCount = selectedAttributes[name]?.length || 0;
+                
+                alert(`${info.label}\nColor: ${info.color}\nElementos: ${count}\n` +
+                      `Atributos: ${selectedCount}/${attrCount}\n` +
+                      `Estado: ${layersMap[name] ? 'Cargada' : 'No cargada'}`);
+            }
+
+            clearAllLayers() {
+                Object.keys(layersMap).forEach(name => {
+                    this.removeLayer(name);
+                    this.uncheckLayer(name);
+                });
+                
+                document.querySelectorAll('.attributes-config').forEach(p => p.classList.remove('show'));
+                document.querySelectorAll('.config-button').forEach(b => b.classList.remove('active'));
+                
+                updateStatus('Capas eliminadas', 'info');
+                showToast('Capas eliminadas', 'info');
+            }
         }
+
+        // Funciones globales
+        window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('open');
+        window.clearAllLayers = () => app.clearAllLayers();
+        window.toggleAttributeConfig = toggleAttributeConfig;
+        window.toggleAllAttributes = toggleAllAttributes;
+        window.handleAttributeChange = handleAttributeChange;
+        window.closeAttributePanel = (name) => {
+            document.getElementById(`attrs-${name}`)?.classList.remove('show');
+            document.getElementById(`config-btn-${name}`)?.classList.remove('active');
+        if (send.ok) {
+    showToast('¡Gracias por su encuesta!', 'success');
+    modal.style.display = 'none';
+} else throw new Error();  showToast('Panel cerrado', 'info');
+        };
+        // Inicialización inmediata
+        window.app = new GeoVisorApp();
+    </script>
+    
+
+    <script>
+    (()=>{
+      let u;
+      const m=document.getElementById('survey-modal');
+      
+      // Función de cierre forzado
+      function forceClose() {
+        m.style.display='none';
+        document.getElementById('satisfaction').selectedIndex=0;
+        document.getElementById('comment').value='';
+        document.getElementById('location-status').textContent='Obteniendo ubicación...';
+        document.getElementById('location-status').className='p-2 bg-yellow-50 text-yellow-700 rounded mb-4 text-sm';
+        window.map.off('click');
+        document.getElementById('submit-btn').disabled=true;
+        u=null;
+      }
+      
+      document.getElementById('survey-btn').onclick=()=>{
+        m.style.display='flex';
+        navigator.geolocation.getCurrentPosition(
+          p=>{
+            u={lat:p.coords.latitude,lng:p.coords.longitude};
+            document.getElementById('location-status').textContent='✅ Ubicación obtenida';
+            document.getElementById('location-status').className='p-2 bg-green-50 text-green-700 rounded mb-4 text-sm';
+            document.getElementById('submit-btn').disabled=false;
+          },
+          ()=>{
+            document.getElementById('location-status').textContent='⚠️ Haga clic en el mapa';
+            document.getElementById('location-status').className='p-2 bg-red-50 text-red-700 rounded mb-4 text-sm';
+            window.map.once('click',e=>{
+              u={lat:e.latlng.lat,lng:e.latlng.lng};
+              document.getElementById('location-status').textContent='✅ Ubicación seleccionada';
+              document.getElementById('location-status').className='p-2 bg-green-50 text-green-700 rounded mb-4 text-sm';
+              document.getElementById('submit-btn').disabled=false;
+            });
+          }
+        );
+      };
+      
+      document.getElementById('cancel-btn').onclick=forceClose;
+      
+      document.getElementById('submit-btn').onclick=async()=>{
+        const v=document.getElementById('satisfaction').value;
+        if(!v)return alert('Por favor seleccione su nivel de satisfacción');
+        if(!u)return alert('No se pudo obtener ubicación');
         
-        .welcome-text {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            border-left: 4px solid #667eea;
-            margin-top: 20px;
+        const b=document.getElementById('submit-btn');
+        b.disabled=true;
+        b.textContent='Enviando...';
+        
+        // Cierre preventivo tras un breve retraso
+        setTimeout(() => forceClose(), 2000);
+        
+        try {
+          const api = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1d3JmYW9yb2l0dHJpdGljYnBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAyOTMxMTMsImV4cCI6MjA2NTg2OTExM30.JkrHztgVNpUcq2wJ3Rlfy_SsBIFhkVnP-x6LkZPWUnU';
+          
+          // Construir headers una sola vez
+          const h = {
+            'apikey': api,
+            'Authorization': `Bearer ${api}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          };
+          
+          // Simplificar la obtención del número de reporte (usar 1 si falla)
+          let nextNum = 1;
+          try {
+            const r = await fetch('https://xuwrfaoroittriticbpc.supabase.co/rest/v1/encuesta?select=num_reporte&order=num_reporte.desc&limit=1', {
+              headers: {
+                'apikey': api,
+                'Authorization': `Bearer ${api}`
+              }
+            });
+            const d = await r.json();
+            if (d && d.length && d[0].num_reporte) {
+              nextNum = parseInt(d[0].num_reporte) + 1;
+            }
+          } catch (err) {
+            console.warn('Error al obtener último reporte, usando 1 como valor predeterminado');
+          }
+          
+          // Enviar la encuesta (sin esperar respuesta)
+          fetch('https://xuwrfaoroittriticbpc.supabase.co/rest/v1/encuesta', {
+            method: 'POST',
+            headers: h,
+            body: JSON.stringify({
+              fecha: new Date().toISOString(),
+              grado_satisfaccion: parseInt(v),
+              comentario: document.getElementById('comment').value.trim() || null,
+              geom: `POINT(${u.lng} ${u.lat})`,
+              num_reporte: nextNum
+            })
+          }).then(() => {
+            showToast('¡Gracias por su encuesta!', 'success');
+          }).catch(() => {
+            console.log('Error al enviar encuesta pero continuamos');
+          });
+          
+          // Cierre inmediato sin esperar la respuesta
+          m.style.display = 'none';
+          showToast('Encuesta enviada', 'info');
+          
+        } catch (e) {
+          console.error(e);
+          // Forzar cierre aunque haya error
+          m.style.display = 'none';
+        } finally {
+          // Restaurar estado del botón
+          b.disabled = false;
+          b.textContent = 'Enviar';
         }
-        
-        .footer {
-            margin-top: 30px;
-            color: #888;
-            font-size: 0.9em;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="map-icon">🗺️</div>
-        <h1>¡Hola Mundo!</h1>
-        <div class="subtitle">
-            Bienvenido a mi <strong>Geoportal</strong>
-        </div>
-        
-        <div class="welcome-text">
-            <p>👋 ¡Saludos desde Ecuador! </p>
-            <p>Este es mi geoportal donde trabajo con datos espaciales, mapas interactivos y análisis geográfico.</p>
-            <p>🌍 Explorando el mundo a través de la geografía y los SIG</p>
-        </div>
-        
-        <div class="footer">
-            <p>Desarrollado con PostGIS y mucho ☕</p>
-        </div>
-    </div>
+      };
+    })();
+    </script>
+
+
 </body>
 </html>
